@@ -16,3 +16,5 @@ backend/infra/bin/*.js
 backend/infra/lib/*.js
 backend/infra/test/*.js
 backend/infra/**/*.d.ts
+# 단, jest 설정은 소스이므로 추적
+!backend/infra/test/jest.setup.js
