@@ -57,6 +57,8 @@ const $ = (id) => document.getElementById(id);
 const sessionId = "demo-" + Math.random().toString(36).slice(2, 8);
 let ws = null;
 const cache = {};
+// ?url=wss://... 로 열면 주소를 미리 채운다
+$("url").value = new URLSearchParams(location.search).get("url") || "";
 
 function log(obj, cls) {
   const line = (typeof obj === "string" ? obj : JSON.stringify(obj, null, 2));

@@ -101,3 +101,19 @@ def test_ttl_환경변수_반영(monkeypatch):
     monkeypatch.setenv("URL_TTL_SEC", "60")
     s = SpeechSynthesizer(bucket="b", polly=FakePolly(), s3=FakeS3())
     assert s.ttl == 60
+
+
+def test_presigned_url은_리전_주소와_SigV4를_쓴다():
+    """회귀 방지: 전역 주소(버킷.s3.amazonaws.com)로 서명하면 서울 리전 새 버킷이 400을 낸다."""
+    import boto3
+    from speech import s3_presign_config
+
+    s3 = boto3.client(
+        "s3", region_name="ap-northeast-2", config=s3_presign_config(),
+        aws_access_key_id="test", aws_secret_access_key="test",
+    )
+    url = s3.generate_presigned_url(
+        "get_object", Params={"Bucket": "my-bucket", "Key": "audio/a.mp3"}, ExpiresIn=60
+    )
+    assert url.startswith("https://my-bucket.s3.ap-northeast-2.amazonaws.com/")
+    assert "X-Amz-Algorithm=AWS4-HMAC-SHA256" in url

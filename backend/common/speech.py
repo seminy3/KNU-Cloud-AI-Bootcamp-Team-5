@@ -27,10 +27,24 @@ class SpeechError(Exception):
     """음성 합성/업로드 실패."""
 
 
+def s3_presign_config():
+    """presigned URL 이 리전 주소(버킷.s3.<region>.amazonaws.com) + SigV4 로 만들어지게 한다.
+
+    기본 설정은 전역 주소(버킷.s3.amazonaws.com)를 써서, 서울 리전에 새로 만든 버킷은
+    그 URL 을 400 Bad Request 로 거부한다(브라우저에서 음성이 재생되지 않던 원인).
+    """
+    from botocore.config import Config
+
+    return Config(signature_version="s3v4", s3={"addressing_style": "virtual"})
+
+
 def _clients(region):
     import boto3
 
-    return boto3.client("polly", region_name=region), boto3.client("s3", region_name=region)
+    return (
+        boto3.client("polly", region_name=region),
+        boto3.client("s3", region_name=region, config=s3_presign_config()),
+    )
 
 
 class SpeechSynthesizer:
