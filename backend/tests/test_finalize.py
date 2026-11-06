@@ -217,3 +217,45 @@ def test_body_words_우선하고_버퍼도_클리어(monkeypatch):
     out = fh._handle({"sessionId": "abc", "words": ["맞다"]})
     assert out["words"] == ["맞다"]      # body.words 우선
     assert "abc" in store.cleared        # 버퍼는 정리됨
+
+
+def test_generate_sentence는_자기자신을_호출하지_않는다(tmp_path, monkeypatch):
+    """회귀 방지: finalize 자신의 handler.py와 llm/handler.py가 모듈명 'handler'로
+    겹쳐, `from handler import ...`가 자기 자신을 집어 {statusCode:200}을 반환하던 버그.
+    generate_sentence는 llm/handler.py를 파일 경로로 고유 로드해야 한다.
+    """
+    # 가짜 llm/handler.py를 finalize의 _here/llm 아래에 심어, 그게 로드되는지 확인
+    import os
+
+    llm_dir = Path(fh._here) / "llm"
+    created = False
+    if not llm_dir.exists():
+        llm_dir.mkdir(parents=True)
+        created = True
+    marker = llm_dir / "handler.py"
+    had_marker = marker.exists()
+    backup = marker.read_text(encoding="utf-8") if had_marker else None
+    try:
+        # 입력을 그대로 돌려주는 가짜 llm handler (finalize의 {statusCode}와 구분됨)
+        marker.write_text(
+            "def lambda_handler(event):\n"
+            "    return {'sentence': 'LLM:' + '/'.join(event['words']),\n"
+            "            'ambiguous': False, 'fallback': False}\n",
+            encoding="utf-8",
+        )
+        fh._generate = None  # 캐시 초기화
+        out = fh.generate_sentence(["아프다", "머리"], [])
+        # finalize 자신(statusCode)이 아니라 llm handler 결과여야 한다
+        assert "statusCode" not in out
+        assert out["sentence"] == "LLM:아프다/머리"
+    finally:
+        fh._generate = None
+        if backup is not None:
+            marker.write_text(backup, encoding="utf-8")
+        elif marker.exists():
+            marker.unlink()
+        if created:
+            try:
+                llm_dir.rmdir()
+            except OSError:
+                pass

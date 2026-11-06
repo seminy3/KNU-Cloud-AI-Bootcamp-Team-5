@@ -109,7 +109,8 @@ export class Flow1BackendStack extends cdk.Stack {
       code: recognizeCode,
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
-      environment: { ENDPOINT_NAME: endpointName },
+      // recognize 는 인식한 단어를 세션 버퍼(DynamoDB)에 누적하므로 TABLE_NAME 필요
+      environment: { ENDPOINT_NAME: endpointName, TABLE_NAME: table.tableName },
       logGroup: recognizeLog,
     });
 
@@ -206,6 +207,8 @@ export class Flow1BackendStack extends cdk.Stack {
     audioBucket.grantReadWrite(finalizeFn);
     table.grantReadWriteData(finalizeFn);
     table.grantReadWriteData(doctorFn);
+    // recognize 도 단어 버퍼를 DynamoDB 에 쌓으므로 읽기·쓰기 권한 필요
+    table.grantReadWriteData(recognizeFn);
 
     // ── WebSocket API (API Gateway v2, L1) ─────────────────
     const api = new apigwv2.CfnApi(this, "WebSocketApi", {

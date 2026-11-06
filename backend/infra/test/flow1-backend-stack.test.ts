@@ -123,6 +123,35 @@ describe("Flow1BackendStack", () => {
     expect(Object.keys(fns).length).toBe(1);
   });
 
+  test("recognize Lambda에 ENDPOINT_NAME과 TABLE_NAME이 모두 설정된다", () => {
+    const t = synth();
+    // recognize 는 단어 버퍼를 DynamoDB에 쌓으므로 TABLE_NAME 이 있어야 한다.
+    // (이게 없어서 버퍼 저장이 조용히 실패하고 finalize가 빈 버퍼를 읽던 버그 회귀 방지)
+    const fns = t.findResources("AWS::Lambda::Function", {
+      Properties: {
+        Environment: {
+          Variables: Match.objectLike({ ENDPOINT_NAME: "sign-word-model" }),
+        },
+      },
+    });
+    // ENDPOINT_NAME 을 가진 함수는 recognize 하나. 그 함수에 TABLE_NAME 도 있어야 한다.
+    const recognize = Object.values(fns).find(
+      (f: any) => f.Properties.Environment.Variables.ENDPOINT_NAME !== undefined
+    ) as any;
+    expect(recognize).toBeDefined();
+    expect(recognize.Properties.Environment.Variables.TABLE_NAME).toBeDefined();
+  });
+
+  test("DynamoDB 테이블에 세 Lambda(recognize/finalize/doctor)가 읽기·쓰기 권한을 가진다", () => {
+    const t = synth();
+    // dynamodb:PutItem 등을 허용하는 IAM 정책 statement 가 3개 함수 역할에 있어야 한다.
+    const policies = t.findResources("AWS::IAM::Policy");
+    const json = JSON.stringify(policies);
+    const putItemCount = (json.match(/dynamodb:PutItem/g) || []).length;
+    // grantReadWriteData 는 함수마다 정책을 만들므로 최소 3개 함수분
+    expect(putItemCount).toBeGreaterThanOrEqual(3);
+  });
+
   test("anthropic SDK 레이어가 생성되고 Python 3.12와 호환된다", () => {
     const t = synth();
     t.resourceCountIs("AWS::Lambda::LayerVersion", 1);

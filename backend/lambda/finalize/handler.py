@@ -68,12 +68,23 @@ def generate_sentence(words, history):
     """llm 패키지의 문장 생성을 호출한다. {sentence, ambiguous, fallback} 반환.
 
     llm/handler.py의 lambda_handler가 labels 필터·fallback까지 처리하므로 재사용.
-    import는 콜드 스타트 비용을 늦추려 함수 안에서.
+
+    주의: 이 Lambda 자신의 파일도 handler.py라, `from handler import ...` 로는
+    sys.modules 에 이미 로드된 '자기 자신'을 집어 온다(→ 엉뚱하게 {statusCode:200}).
+    그래서 llm/handler.py 를 파일 경로에서 고유 이름('llm_handler')으로 로드한다.
+    import 는 콜드 스타트 비용을 늦추려 함수 안에서 한다.
     """
     global _generate
     if _generate is None:
-        from handler import lambda_handler as llm_handler  # llm/handler.py
-        _generate = llm_handler
+        import importlib.util
+
+        llm_path = os.path.join(_here, "llm", "handler.py")
+        spec = importlib.util.spec_from_file_location("llm_handler", llm_path)
+        mod = importlib.util.module_from_spec(spec)
+        # llm/handler.py 는 같은 디렉터리의 sentence.py 를 import 하므로
+        # llm 디렉터리가 sys.path 에 있어야 한다(파일 상단에서 이미 추가).
+        spec.loader.exec_module(mod)
+        _generate = mod.lambda_handler
     return _generate({"words": words, "history": history})
 
 
