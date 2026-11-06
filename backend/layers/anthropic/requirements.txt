@@ -1,0 +1,4 @@
+# finalize Lambda가 Bedrock으로 문장을 생성할 때 쓰는 SDK.
+# Lambda Layer로 제공한다(배포 시 Lambda 런타임용으로 설치).
+# llm/sentence.py 의 make_client() 가 AnthropicBedrock 을 import 한다.
+anthropic[bedrock]>=0.39
