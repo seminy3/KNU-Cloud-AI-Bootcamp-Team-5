@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-transcribe-streaming": "latest",
-    "@aws-sdk/credential-providers": "latest",
+    "@aws-sdk/credential-provider-cognito-identity": "3.972.81",
     "@mediapipe/tasks-vision": "latest",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

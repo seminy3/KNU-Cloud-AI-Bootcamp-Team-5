@@ -1,5 +1,5 @@
 import {TranscribeStreamingClient,StartStreamTranscriptionCommand} from '@aws-sdk/client-transcribe-streaming';
-import {fromCognitoIdentityPool} from '@aws-sdk/credential-providers';
+import {fromCognitoIdentityPool} from '@aws-sdk/credential-provider-cognito-identity';
 export async function transcribe(signal:AbortSignal,onText:(id:string,text:string,partial:boolean)=>void,onReady:()=>void){
   const identityPoolId=import.meta.env.VITE_COGNITO_IDENTITY_POOL_ID;
   if(!identityPoolId)throw new Error('음성 인식 연결 설정이 필요합니다.');
