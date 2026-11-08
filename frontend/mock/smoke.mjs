@@ -10,6 +10,7 @@ try{
   assert.deepEqual((await request({action:'recognize',keypoints})).words,['나','병원']);
   const speech=await request({action:'finalize'});assert.equal(speech.type,'speech');assert.equal(speech.needsConfirm,false);
   assert.equal((await request({action:'finalize'})).stage,'sentence');
+  assert.deepEqual((await request({action:'finalize',words:['머리','아프다']})).words,['머리','아프다']);
   assert.equal((await request({action:'doctorUtterance',text:'어디가 아프세요?'})).text,'어디가 아프세요?');
   assert.equal((await request({action:'recognize',keypoints:[]})).type,'error');
   console.log('PASS: real WebSocket recognize, accumulation, finalize, buffer reset, transcript, error');
