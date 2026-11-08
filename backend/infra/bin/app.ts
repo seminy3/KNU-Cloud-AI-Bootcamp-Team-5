@@ -26,20 +26,23 @@ new Flow1BackendStack(app, "SignMedFlow1BackendStack", {
     "흐름 ①·② 백엔드: WebSocket API + recognize/finalize/doctorUtterance Lambda + S3 + DynamoDB + Cognito",
 });
 
-new CicdOidcStack(app, "SignMedCicdOidcStack", {
-  env: { account, region },
-  description:
-    "CI/CD: GitHub Actions OIDC Provider + cdk deploy용 배포 역할",
-});
-
 new MonitoringStack(app, "SignMedMonitoringStack", {
   env: { account, region },
   description:
     "모니터링: CloudWatch 대시보드·알람 + AWS Budgets 월 예산 경보",
 });
 
-new WebappHostingStack(app, "SignMedWebappHostingStack", {
+const webapp = new WebappHostingStack(app, "SignMedWebappHostingStack", {
   env: { account, region },
   description:
     "웹앱(React) 정적 호스팅: S3 + CloudFront(OAC, HTTPS, SPA fallback)",
+});
+
+new CicdOidcStack(app, "SignMedCicdOidcStack", {
+  env: { account, region },
+  // 프론트 자동 배포 역할이 웹앱 버킷·배포에 권한을 받는다
+  webappBucket: webapp.bucket,
+  webappDistribution: webapp.distribution,
+  description:
+    "CI/CD: GitHub Actions OIDC Provider + cdk deploy용 배포 역할",
 });

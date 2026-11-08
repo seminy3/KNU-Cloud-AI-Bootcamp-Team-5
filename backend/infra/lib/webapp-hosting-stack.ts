@@ -20,6 +20,10 @@ import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
  * (Flow1BackendStack). 여기 CloudFront 는 웹앱 호스팅 전용이다.
  */
 export class WebappHostingStack extends cdk.Stack {
+  /** 프론트 자동 배포 역할(CicdOidcStack)이 업로드·캐시 무효화 권한을 받는 대상 */
+  public readonly bucket: s3.IBucket;
+  public readonly distribution: cloudfront.IDistribution;
+
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
@@ -56,6 +60,9 @@ export class WebappHostingStack extends cdk.Stack {
       ],
       comment: "SignMed 웹앱 호스팅",
     });
+
+    this.bucket = siteBucket;
+    this.distribution = distribution;
 
     new cdk.CfnOutput(this, "WebappBucketName", {
       value: siteBucket.bucketName,
