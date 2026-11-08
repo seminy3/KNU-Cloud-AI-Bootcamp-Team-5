@@ -60,6 +60,8 @@ describe("CicdOidcStack", () => {
     const t = Template.fromStack(stack);
     const roles = JSON.stringify(t.findResources("AWS::IAM::Role"));
     expect(roles).toContain("repo:seminy3/KNU-Cloud-AI-Bootcamp-Team-5:ref:refs/heads/main");
+    // GitHub 불변 ID 형식 sub도 받아야 한다(이 저장소가 실제로 보내는 형식)
+    expect(roles).toContain("repo:seminy3@234939058/KNU-Cloud-AI-Bootcamp-Team-5@1411516550:ref:refs/heads/main");
     const policies = JSON.stringify(t.findResources("AWS::IAM::Policy"));
     expect(policies).toContain("cloudfront:CreateInvalidation");
     expect(policies).toContain("s3:PutObject");

@@ -34,9 +34,21 @@ export class CicdOidcStack extends cdk.Stack {
       props?.githubRepo ??
       (this.node.tryGetContext("githubRepo") as string) ??
       "seminy3/KNU-Cloud-AI-Bootcamp-Team-5";
+    // GitHub OIDC 토큰의 sub 앞부분. 이 저장소는 이름 대신 바뀌지 않는 ID를 함께 쓰는 형식
+    // (repo:owner@ownerId/name@repoId)으로 보내므로 두 형식을 모두 받는다.
+    // ID는 `gh api repos/<repo>/actions/oidc/customization/sub`의 sub_claim_prefix 에서 확인한다.
+    const defaultRepo = "seminy3/KNU-Cloud-AI-Bootcamp-Team-5";
+    const immutablePrefix =
+      (this.node.tryGetContext("githubSubPrefix") as string | undefined) ??
+      (githubRepo === defaultRepo
+        ? "repo:seminy3@234939058/KNU-Cloud-AI-Bootcamp-Team-5@1411516550"
+        : undefined);
+    const subPrefixes = [`repo:${githubRepo}`, ...(immutablePrefix ? [immutablePrefix] : [])];
     // 모든 브랜치(repo:...:*)를 허용하면 아무 브랜치의 워크플로가 배포 권한을 얻으므로,
     // ci.yml deploy job이 쓰는 environment: production 으로 좁힌다
-    const subject = props?.subjectClaim ?? `repo:${githubRepo}:environment:production`;
+    const subject = props?.subjectClaim
+      ? [props.subjectClaim]
+      : subPrefixes.map((p) => `${p}:environment:production`);
 
     // GitHub Actions OIDC Provider.
     const provider = new iam.OpenIdConnectProvider(this, "GitHubOidcProvider", {
@@ -96,7 +108,7 @@ export class CicdOidcStack extends cdk.Stack {
         assumedBy: new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, {
           StringEquals: {
             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-            "token.actions.githubusercontent.com:sub": `repo:${githubRepo}:ref:refs/heads/main`,
+            "token.actions.githubusercontent.com:sub": subPrefixes.map((p) => `${p}:ref:refs/heads/main`),
           },
         }),
         description: "GitHub Actions OIDC frontend deploy (S3 sync + CloudFront invalidation)",
