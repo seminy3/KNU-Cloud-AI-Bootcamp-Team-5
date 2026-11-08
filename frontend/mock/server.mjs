@@ -15,8 +15,9 @@ server.on('connection',socket=>socket.on('message',raw=>{
       const word=['나','병원','가다','아프다','머리'][state.index++%5];state.words.push(word);
       socket.send(JSON.stringify({type:'word',word,candidates:[{name:word,prob:.62}],words:state.words,count:state.words.length}));
     }else if(request.action==='finalize'){
-      if(!state.words.length)return fail('변환할 단어가 없습니다.','sentence');
-      socket.send(JSON.stringify({type:'speech',words:state.words,sentence:'저 병원에 가려고요',audioUrl:'http://localhost:8765/mock-audio.mp3',needsConfirm:false}));state.words=[];
+      const words=Array.isArray(request.words)&&request.words.length?request.words:state.words;
+      if(!words.length)return fail('변환할 단어가 없습니다.','sentence');
+      socket.send(JSON.stringify({type:'speech',words,sentence:'저 병원에 가려고요',audioUrl:'http://localhost:8765/mock-audio.mp3',needsConfirm:false}));state.words=[];
     }else if(request.action==='doctorUtterance'){
       if(typeof request.text!=='string'||!request.text.trim())return fail('저장할 문장이 없습니다.','transcript');
       socket.send(JSON.stringify({type:'transcript',text:request.text}));
