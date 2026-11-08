@@ -18,6 +18,12 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 import invoke_endpoint as mod  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _fake_payload(monkeypatch):
+    # test_1~3.json(AI Hub 좌표)은 저장소에 없으므로 파일 읽기를 대체한다
+    monkeypatch.setattr(mod, "load_payload", lambda file_name: {"keypoints": []})
+
+
 class FakeClient:
     """invoke_endpoint 호출마다 미리 넣어둔 응답(dict)이나 예외를 돌려준다."""
 
