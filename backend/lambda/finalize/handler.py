@@ -37,6 +37,7 @@ for sub in ("common", "llm", ""):
 
 from conversation import ConversationError, ConversationStore  # noqa: E402
 from speech import SpeechError, SpeechSynthesizer  # noqa: E402
+from peers import relay  # noqa: E402
 from ws import connection_id, make_poster, parse_body, send  # noqa: E402
 
 log = logging.getLogger()
@@ -159,4 +160,10 @@ def lambda_handler(event, context=None):
         send(poster, cid, payload)
     except Exception:  # noqa: BLE001
         log.exception("연결로 응답 전송 실패 cid=%s", cid)
+    # 같은 대화 코드의 의료진 화면으로 환자 문장과 음성을 전달한다
+    if payload.get("type") == "speech":
+        relay(event, lambda: store().table, body.get("sessionId"),
+              {"type": "relay", "role": "patient", "text": payload["sentence"],
+               "audioUrl": payload.get("audioUrl"), "needsConfirm": payload.get("needsConfirm", False)},
+              exclude=cid)
     return {"statusCode": 200}

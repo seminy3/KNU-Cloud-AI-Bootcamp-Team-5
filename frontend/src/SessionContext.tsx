@@ -13,6 +13,9 @@ function useSessionState(){
   const [error,setError]=useState('');
   const [pending,setPending]=useState('');
   const [uncertain,setUncertain]=useState(false);
+  // 이 화면의 역할과, 같은 대화 코드에 접속한 역할 목록(서버 presence)
+  const [role,setRole]=useState<Role|null>(null);
+  const [peers,setPeers]=useState<Role[]>([]);
   const connection=useRef<Connection|null>(null),peer=useRef<PeerTransport|null>(null),pendingRef=useRef('');
   const timer=useRef<ReturnType<typeof setTimeout>>(undefined);
   const add=(message:Message)=>setMessages(all=>all.some(m=>m.id===message.id)?all:[...all,message]);
@@ -24,6 +27,9 @@ function useSessionState(){
       setStatus(s);
       if(s==='reconnecting'&&pendingRef.current){setUncertain(true);setError('요청 처리 여부를 확인할 수 없습니다. 중복 전송을 막기 위해 새 대화를 시작해 주세요.');}
     },r=>{
+      // 상대 화면 관련 메시지는 내 요청의 응답이 아니므로 response를 바꾸지 않는다
+      if(r.type==='presence'){setPeers(r.roles);return;}
+      if(r.type==='relay'){add({id:crypto.randomUUID(),role:r.role,text:r.text,time:Date.now(),needsConfirm:r.needsConfirm,audioUrl:r.audioUrl});return;}
       setResponse(r);
       const expected=pendingRef.current;
       if(r.type==='word'){const item={word:r.word,candidates:r.candidates.map(c=>c.name)};setItems(all=>[...all,item]);}
@@ -37,8 +43,13 @@ function useSessionState(){
       }
     },setError);
     connection.current=client;client.connect();
-    return ()=>{client.close();peer.current?.close();clearTimeout(timer.current);pendingRef.current='';};
+    return ()=>{client.close();peer.current?.close();clearTimeout(timer.current);pendingRef.current='';setPeers([]);};
   },[sessionId]);
+  // 연결될 때마다(재연결 포함) 대화 코드와 역할을 서버에 등록한다
+  useEffect(()=>{
+    if(status!=='connected'||!sessionId||!role)return;
+    try{connection.current?.send({action:'join',sessionId,role});}catch(e){setError((e as Error).message);}
+  },[status,sessionId,role]);
   function begin(id:string=crypto.randomUUID()){setItems([]);setMessages([]);setResponse(null);setError('');setUncertain(false);setPending('');pendingRef.current='';setSessionId(id);}
   function end(){setSessionId('');sessionStorage.removeItem('signmed-session');setItems([]);setMessages([]);setResponse(null);}
   function send(request:Request){
@@ -58,7 +69,7 @@ function useSessionState(){
   const removeWord=(index:number)=>setItems(all=>all.filter((_,i)=>i!==index));
   const clearWords=()=>setItems([]);
   const finalize=()=>words.length>0&&send({action:'finalize',sessionId,words});
-  return {sessionId,status,words,items,replaceWord,removeWord,clearWords,finalize,response,messages,error,setError,pending,uncertain,begin,end,send,doctor};
+  return {sessionId,status,role,setRole,peers,words,items,replaceWord,removeWord,clearWords,finalize,response,messages,error,setError,pending,uncertain,begin,end,send,doctor};
 }
 const SessionContext=createContext<ReturnType<typeof useSessionState>|null>(null);
 export function SessionProvider({children}:{children:ReactNode}){const state=useSessionState();return <SessionContext.Provider value={state}>{children}</SessionContext.Provider>;}

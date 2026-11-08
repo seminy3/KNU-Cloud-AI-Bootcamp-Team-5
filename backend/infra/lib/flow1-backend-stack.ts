@@ -98,6 +98,13 @@ export class Flow1BackendStack extends cdk.Stack {
       ]
     );
 
+    // 두 화면 연결: join(대화 코드·역할 등록), $disconnect(연결 정리)
+    const peerCode = (name: string) =>
+      localAsset(path.join(repoRoot, "backend", "lambda", name), [
+        { from: path.join(repoRoot, "backend", "lambda", name), to: "." },
+        { from: path.join(repoRoot, "backend", "common"), to: "common" },
+      ]);
+
     // ── Lambda ──────────────────────────────────────────────
     const recognizeLog = new logs.LogGroup(this, "RecognizeLog", {
       retention: logs.RetentionDays.ONE_WEEK,
@@ -171,6 +178,22 @@ export class Flow1BackendStack extends cdk.Stack {
       logGroup: doctorLog,
     });
 
+    const peerFn = (id: string, name: string) =>
+      new lambda.Function(this, id, {
+        runtime: lambda.Runtime.PYTHON_3_12,
+        handler: "handler.lambda_handler",
+        code: peerCode(name),
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 256,
+        environment: { TABLE_NAME: table.tableName },
+        logGroup: new logs.LogGroup(this, `${id}Log`, {
+          retention: logs.RetentionDays.ONE_WEEK,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+      });
+    const joinFn = peerFn("JoinFn", "join");
+    const disconnectFn = peerFn("DisconnectFn", "disconnect");
+
     // ── 최소 권한 IAM ───────────────────────────────────────
     const endpointArn = this.formatArn({
       service: "sagemaker",
@@ -209,6 +232,8 @@ export class Flow1BackendStack extends cdk.Stack {
     table.grantReadWriteData(doctorFn);
     // recognize 도 단어 버퍼를 DynamoDB 에 쌓으므로 읽기·쓰기 권한 필요
     table.grantReadWriteData(recognizeFn);
+    table.grantReadWriteData(joinFn);
+    table.grantReadWriteData(disconnectFn);
 
     // ── WebSocket API (API Gateway v2, L1) ─────────────────
     const api = new apigwv2.CfnApi(this, "WebSocketApi", {
@@ -244,6 +269,8 @@ export class Flow1BackendStack extends cdk.Stack {
     makeRoute("recognize", recognizeFn);
     makeRoute("finalize", finalizeFn);
     makeRoute("doctorUtterance", doctorFn);
+    makeRoute("join", joinFn);
+    makeRoute("$disconnect", disconnectFn);
 
     const stage = new apigwv2.CfnStage(this, "Stage", {
       apiId: api.ref,
@@ -262,6 +289,8 @@ export class Flow1BackendStack extends cdk.Stack {
     recognizeFn.addToRolePolicy(manageConnections);
     finalizeFn.addToRolePolicy(manageConnections);
     doctorFn.addToRolePolicy(manageConnections);
+    joinFn.addToRolePolicy(manageConnections);
+    disconnectFn.addToRolePolicy(manageConnections);
 
     // ── 흐름 ②: Cognito Identity Pool (브라우저 → Transcribe 직결) ──
     // 브라우저가 로그인 없이 임시 자격증명을 받아 Transcribe Streaming 에 직접 연결한다.

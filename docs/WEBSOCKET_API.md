@@ -109,6 +109,38 @@
 
 ---
 
+## 두 화면 연결 (환자 기기 ↔ 의료진 기기)
+
+### `join` — 대화 코드와 역할 등록
+
+연결될 때마다(재연결 포함) 보낸다. 재연결하면 연결 ID가 바뀌기 때문이다.
+
+```jsonc
+{"action": "join", "sessionId": "abc12345", "role": "patient"}   // role: "patient" | "doctor"
+```
+
+같은 대화 코드의 모든 연결(자기 자신 포함)이 접속 상태를 받는다. 연결이 끊기면 남은 연결이 다시 받는다.
+
+```jsonc
+{"type": "presence", "roles": ["doctor", "patient"]}
+```
+
+### `relay` — 상대 화면에서 생긴 문장·자막
+
+`join`한 연결끼리만 오간다. 보낸 쪽에는 원래 응답(`speech`, `transcript`)이 그대로 온다.
+
+```jsonc
+// 환자 finalize 성공 → 의료진 화면
+{"type": "relay", "role": "patient", "text": "머리가 아파요.", "audioUrl": "https://...", "needsConfirm": false}
+// 의료진 doctorUtterance → 환자 화면
+{"type": "relay", "role": "doctor", "text": "언제부터 아프셨어요?"}
+```
+
+- 연결 목록은 대화 기록 테이블에 저장하고 3시간 뒤 만료된다.
+- 전달 실패는 원래 요청을 막지 않는다. 끊긴 연결은 전달할 때 목록에서 지운다.
+
+---
+
 ## 에러
 
 모든 실패는 공통 포맷으로 온다.
@@ -116,7 +148,7 @@
 ```jsonc
 {
   "type": "error",
-  "stage": "recognize" | "sentence" | "speech" | "transcript",
+  "stage": "recognize" | "sentence" | "speech" | "transcript" | "join",
   "message": "사람이 읽을 안내 문구",
   "retryable": true
 }
@@ -128,6 +160,7 @@
 | `sentence` | 변환할 단어 없음/문장 생성 실패 | 단어를 다시 모으게 안내 |
 | `speech` | 음성 합성 실패 | 자막만 표시(참고: speech 응답의 audioUrl=null + needsConfirm=true로 오는 경우가 일반적) |
 | `transcript` | 저장할 텍스트 없음 | 무시 가능 |
+| `join` | 대화 코드·역할 형식 오류, 등록 실패 | 대화 코드를 다시 확인하게 안내 |
 
 - `retryable: true`면 같은 요청을 다시 보내도 된다.
 
