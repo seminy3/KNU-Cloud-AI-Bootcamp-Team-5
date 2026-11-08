@@ -58,7 +58,8 @@ jobs:
   # 역할은 SignMedCicdOidcStack의 signmed-github-frontend-deploy (main 브랜치 push 전용, 업로드·캐시 무효화 권한만).
   deploy:
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.FRONTEND_DEPLOY_ROLE_ARN != ''
+    # main push 또는 main에서 수동 실행(Actions → Frontend build → Run workflow)
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && vars.FRONTEND_DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     permissions:
       id-token: write
