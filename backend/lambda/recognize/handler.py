@@ -16,6 +16,7 @@ WebSocket action "recognize"를 받아 SageMaker(sign-word-model)로 단어를 �
 환경 변수: ENDPOINT_NAME (기본 sign-word-model), TABLE_NAME(대화/버퍼 테이블)
 """
 import logging
+import math
 import os
 import sys
 
@@ -31,6 +32,31 @@ log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 TOP_K = int(os.environ.get("TOP_K", 5))
+FRAMES, POINTS = 30, 49
+# 정규화 좌표는 어깨 너비 기준이라 보통 ±5 안이다. 이보다 크면 잘못 만든 입력으로 본다
+MAX_ABS = 100.0
+
+
+def validate_keypoints(kp):
+    """(30, 49, 2) 유한한 숫자인지 본다. 문제가 있으면 이유(str), 없으면 None.
+
+    잘못된 입력이 엔드포인트에 가면 모델 워커가 죽고 다시 뜨면서 다음 호출이 느려진다.
+    """
+    if not isinstance(kp, list) or len(kp) != FRAMES:
+        return f"프레임 수 {len(kp) if isinstance(kp, list) else type(kp).__name__}"
+    nonzero = False
+    for frame in kp:
+        if not isinstance(frame, list) or len(frame) != POINTS:
+            return "프레임당 지점 수"
+        for point in frame:
+            if (not isinstance(point, list) or len(point) != 2
+                    or not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                               and math.isfinite(v) and abs(v) <= MAX_ABS for v in point)):
+                return "지점 값"
+            nonzero = nonzero or point[0] != 0 or point[1] != 0
+    if not nonzero:
+        return "모든 지점이 0"
+    return None
 
 # 콜드 스타트 때 한 번만 만든다
 _recognizer = None
@@ -57,6 +83,11 @@ def _handle(body):
     if not keypoints:
         return {"type": "error", "stage": "recognize",
                 "message": "keypoints가 없습니다.", "retryable": True}
+    problem = validate_keypoints(keypoints)
+    if problem:
+        log.warning("입력 거부: %s", problem)
+        return {"type": "error", "stage": "recognize",
+                "message": "동작 데이터가 올바르지 않아요. 다시 시도해 주세요.", "retryable": True}
     try:
         out = recognizer().recognize(keypoints, top_k=TOP_K)
     except RecognizeError as e:
@@ -68,6 +99,9 @@ def _handle(body):
                 "message": "인식된 단어가 없어요. 다시 시도해 주세요.", "retryable": True}
 
     word = out["word"]
+    # 웹캠 시험 결과를 모으기 위한 로그(단어와 확률만, 좌표는 남기지 않는다)
+    log.info("recognized session=%s top=%s", body.get("sessionId"),
+             [(c.get("name"), round(float(c.get("prob") or 0), 4)) for c in out["candidates"]])
     # 인식한 단어를 세션 버퍼에 쌓는다. 버퍼 실패는 인식 자체를 막지 않도록
     # best-effort: 저장이 안 돼도 방금 단어는 돌려준다(words는 최소한 그 단어).
     session_id = body.get("sessionId")

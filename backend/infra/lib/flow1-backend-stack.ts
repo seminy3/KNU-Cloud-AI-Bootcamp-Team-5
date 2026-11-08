@@ -147,9 +147,9 @@ export class Flow1BackendStack extends cdk.Stack {
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: "handler.lambda_handler",
       code: finalizeCode,
-      // Bedrock + Polly + S3 라 넉넉히
+      // Bedrock + Polly + S3 라 넉넉히. 512MB 에서 첫 호출 15~22초, 1024MB 에서 8.5초(2026-11-06 측정)
       timeout: cdk.Duration.seconds(30),
-      memorySize: 512,
+      memorySize: 1024,
       layers: [anthropicLayer],
       environment: {
         AUDIO_BUCKET: audioBucket.bucketName,
@@ -276,6 +276,12 @@ export class Flow1BackendStack extends cdk.Stack {
       apiId: api.ref,
       stageName: "dev",
       autoDeploy: true,
+      // 인증이 없으므로 주소가 알려져도 비용이 크게 늘지 않게 스테이지 전체 호출을 제한한다.
+      // 시연은 화면 2개가 몇 초에 한 번 보내는 정도라 충분히 여유가 있다.
+      defaultRouteSettings: {
+        throttlingRateLimit: 10,
+        throttlingBurstLimit: 20,
+      },
     });
 
     // @connections push 권한 (양쪽 Lambda)

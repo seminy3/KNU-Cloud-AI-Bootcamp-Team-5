@@ -48,7 +48,7 @@ class SageMakerClient:
 
     def invoke(self, keypoints, top_k=5):
         """엔드포인트를 호출하고 원시 응답(dict)을 돌려준다."""
-        from botocore.exceptions import ClientError
+        from botocore.exceptions import BotoCoreError, ClientError
 
         payload = {"top_k": top_k, "keypoints": keypoints}
         try:
@@ -61,6 +61,10 @@ class SageMakerClient:
         except ClientError as e:
             code = e.response.get("Error", {}).get("Code", "ClientError")
             raise RecognizeError(f"엔드포인트 호출 실패: {code}") from e
+        except (BotoCoreError, ValueError) as e:
+            # 시간 초과·연결 오류(BotoCoreError), 응답 JSON 오류(ValueError)도
+            # 사용자에게 오류 응답이 가도록 RecognizeError로 바꾼다
+            raise RecognizeError(f"엔드포인트 호출 실패: {type(e).__name__}") from e
 
     def recognize(self, keypoints, top_k=5):
         """keypoints → 1위 단어 + 후보 목록.
