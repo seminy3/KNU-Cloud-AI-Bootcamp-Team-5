@@ -1,3 +1,4 @@
+import {roundSequence} from './keypointNormalizer';
 import type {Request, Response, Status, Sequence} from '../types';
 export function validateSequence(value:unknown): value is Sequence {
   return Array.isArray(value) && value.length===30 && value.every(frame=>Array.isArray(frame)&&frame.length===49&&frame.every(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite))) && value.some(frame=>frame.some((p:number[])=>p.some((n:number)=>n!==0)));
@@ -30,10 +31,11 @@ export class Connection {
   send(request:Request){
     if(this.socket?.readyState!==WebSocket.OPEN)throw new Error('서버에 연결된 뒤 다시 시도해 주세요.');
     if(request.action==='recognize'&&!validateSequence(request.keypoints))throw new Error('좌표 데이터가 올바르지 않습니다.');
-    const payload=JSON.stringify(request);
+    const payload=JSON.stringify(request.action === 'recognize' ? {...request,keypoints:roundSequence(request.keypoints)} : request);
     if(new TextEncoder().encode(payload).length>32768)throw new Error('좌표 요청이 32KB를 초과합니다. 백엔드와 전송 규격 협의가 필요합니다.');
     this.socket.send(payload);
   }
   close(){this.closed=true;clearTimeout(this.timer);if(this.socket){this.socket.onclose=null;this.socket.close();}this.status('disconnected');}
 }
+
 
