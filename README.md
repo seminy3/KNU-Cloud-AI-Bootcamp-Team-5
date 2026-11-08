@@ -1,37 +1,108 @@
-# KNU-Cloud-AI-Bootcamp-Team-5
+# SignMed AI
 
-수어를 음성·자막으로, 음성을 자막으로 바꿔 주는 AWS 기반 실시간 양방향 통역 서비스.
+병원에서 청각장애인 환자와 의료진이 서로 다른 기기로 대화하도록 돕는 통역 서비스다. 환자의 수어는 문장과 음성으로, 의료진의 말은 자막으로 바꿔 상대 화면에 보낸다.
 
-> 설계 변경(MVP): 음성 → 수어 방향은 수어 영상 클립 재생 없이 **자막으로만** 보여 준다. 이에 따라 수어 영상 어순 변환·영상 클립 매핑 DB는 범위에서 제외됐다.
+KNU 클라우드 AI 부트캠프 5조 프로젝트다.
 
-## 역할 구성
+## 하는 일
 
-| 역할 | 범위 | 디렉터리 |
-|---|---|---|
-| 1 · ML | 수어 인식 모델 학습·평가, SageMaker 배포 | (모델 저장소) |
-| 2 · 데이터 + LLM | 데이터 전처리, 좌표 추출, Bedrock 프롬프트 | [`llm/`](llm/), [`data/`](data/) |
-| 3 · 백엔드 + 인프라 | API·WebSocket·Lambda, Transcribe/Polly, CDK, CI/CD, 모니터링 | [`backend/`](backend/) |
-| 4 · 프론트엔드 | 웹 UI, 브라우저 MediaPipe, 자막·음성 재생 | (프론트 저장소) |
+| 방향 | 흐름 |
+|---|---|
+| 환자 → 의료진 | 웹캠 → 브라우저 MediaPipe(손·포즈 좌표) → 단어 인식(SageMaker) → 단어를 문장으로(Bedrock) → 음성 합성(Polly) → 의료진 화면에 문장과 음성 |
+| 의료진 → 환자 | 마이크 → 음성 인식(Transcribe, 브라우저 직결) 또는 직접 입력 → 환자 화면에 자막 |
 
-## 백엔드 / 인프라 (role 3)
+- 환자 화면: 손을 들면 녹화하고 내리면 단어를 인식한다. 틀린 단어는 후보 5개 중에서 고르거나 지울 수 있다. 단어를 모아 **문장 확정하기**를 누르면 문장이 된다.
+- 의료진 화면: 음성 인식 결과가 입력창에 채워지고, 고쳐서 보낼 수 있다. 글로 바로 보내도 된다.
+- 두 화면은 같은 대화 코드로 연결된다. 상단에 상대방 접속 여부가 보인다.
 
-진행 상황:
-- **SageMaker 엔드포인트 연결 시험**: 권한 문제로 못 했던 호출 테스트를 자격증명 유무와 관계없이 할 수 있게 테스트 Lambda(CDK) + 콘솔 가이드 + 로컬 검증 스크립트 준비 완료.
-- **흐름 ① 백엔드(수어 → 음성·자막)**: WebSocket 두 액션(`recognize`/`finalize`) 구조로 SageMaker → Bedrock → Polly → S3 경로 구현. 단어 누적은 서버가 담당. 공용 모듈 + Lambda + CDK 스택(WebSocket API·S3·DynamoDB·최소 권한 IAM).
-- **흐름 ② 백엔드(음성 → 자막)**: 브라우저가 Cognito 임시 자격증명으로 Transcribe에 직접 연결(아키텍처 문서 방식). 백엔드는 Cognito Identity Pool과 의사 발화 저장 액션(`doctorUtterance`)을 제공해 흐름 ①의 대화 맥락과 연결. 수어 영상 변환은 범위 밖(자막만).
-- **CI/CD**: GitHub Actions 워크플로(검증은 자격증명 없이 동작, 배포는 OIDC). 액세스 키를 GitHub에 올리지 않는다.
-- **모니터링**: CloudWatch 대시보드·Lambda 에러 알람 + AWS Budgets 월 예산 경보.
+## 구조
 
-모두 자격증명 없이 단위테스트(`pytest`)와 `cdk synth`까지 검증했고, 실제 배포/호출만 자격증명 대기 상태다.
+```
+브라우저(환자) ─┐                     ┌─ recognize ── SageMaker 서버리스 (단어 178개 분류)
+브라우저(의료진)─┼─ API Gateway ───────┼─ finalize ─── Bedrock(문장) → Polly(음성) → S3(mp3, presigned URL)
+               │  WebSocket          ├─ doctorUtterance, join, $disconnect
+               │                     └─ DynamoDB (대화 기록·단어 버퍼·연결 목록, 24시간 만료)
+               ├─ Cognito 게스트 자격증명 → Transcribe Streaming (ko-KR)
+               └─ CloudFront → S3 (웹앱)
+```
 
-- 백엔드 개요와 실행 방법: [`backend/README.md`](backend/README.md)
-- CDK 앱: [`backend/infra/README.md`](backend/infra/README.md)
-- WebSocket API 계약 (프론트 공유): [`docs/WEBSOCKET_API.md`](docs/WEBSOCKET_API.md)
-- 프론트 개발용 Mock 서버: [`backend/mock/README.md`](backend/mock/README.md)
-- 엔드포인트 규격: [`ENDPOINT.md`](ENDPOINT.md) · 시험 절차/오류표: [`ENDPOINT_TEST.md`](ENDPOINT_TEST.md)
-- 시험 결과 기록: [`docs/ENDPOINT_TEST_RESULTS.md`](docs/ENDPOINT_TEST_RESULTS.md)
+- 인프라는 CDK(TypeScript)로 만든다: `backend/infra/`
+- 리전은 서울(ap-northeast-2)
 
-## 데이터 + LLM (role 2)
+## 저장소 구성
 
-- 단어 라벨: [`data/labels.csv`](data/labels.csv)
-- Bedrock 문장 생성 Lambda: [`llm/`](llm/)
+| 경로 | 내용 |
+|---|---|
+| [`frontend/`](frontend/) | React + TypeScript + Vite 웹앱, MediaPipe 변환기, 단어 구간 자동 자르기, Mock 서버 |
+| [`backend/lambda/`](backend/lambda/) | WebSocket 액션별 Lambda (`recognize`, `finalize`, `doctorUtterance`, `join`, `disconnect`) |
+| [`backend/common/`](backend/common/) | SageMaker 호출, 대화 기록, 음성 합성, 연결 목록·전달 |
+| [`backend/infra/`](backend/infra/) | CDK 스택 (백엔드, 웹앱 호스팅, CI/CD OIDC, 모니터링) |
+| [`llm/`](llm/) | 단어 → 문장 프롬프트와 생성 코드 |
+| [`data/labels.csv`](data/labels.csv) | 인식 단어 178개 (AI Hub 86개 + 국립국어원 수어사전 92개) |
+| [`docs/WEBSOCKET_API.md`](docs/WEBSOCKET_API.md) | 프론트 ↔ 백엔드 메시지 규격 |
+| [`docs/DEMO_SCENARIO.md`](docs/DEMO_SCENARIO.md) | 시연 순서와 준비 사항 |
+| [`frontend/docs/ml/`](frontend/docs/ml/) | 모델 입력 규격과 ML 쪽 검증 기록 |
+
+AI Hub와 수어사전 원본·좌표 데이터는 저장소에 올리지 않는다(`.gitignore`).
+
+## 로컬에서 실행
+
+Node.js 22.12 이상이 필요하다.
+
+```bash
+cd frontend
+npm install
+cp .env.example .env.local    # 실제 백엔드에 붙이려면 VITE_WS_URL, VITE_COGNITO_IDENTITY_POOL_ID를 채운다
+npm run mock                  # 백엔드 없이 개발할 때. ws://localhost:8765
+npm run dev                   # http://localhost:5173
+```
+
+카메라·마이크는 `localhost` 또는 HTTPS에서만 동작한다.
+
+테스트:
+
+```bash
+cd frontend && npm test                       # 변환기·응답 규격·구간 자르기
+python -m pytest backend/tests/ -q            # Lambda·공용 모듈 (requirements-dev.txt 필요)
+cd backend/infra && npx jest                  # CDK 스택
+```
+
+## 배포
+
+```bash
+cd backend/infra && npm ci
+npx cdk deploy SignMedFlow1BackendStack       # WebSocket API, Lambda, DynamoDB, Cognito
+npx cdk deploy SignMedWebappHostingStack SignMedCicdOidcStack
+```
+
+- 백엔드 출력값 `WebSocketUrl`, `IdentityPoolId`를 저장소 변수 `VITE_WS_URL`, `VITE_COGNITO_IDENTITY_POOL_ID`에 넣는다.
+- 웹앱 출력값과 `FrontendDeployRoleArn`을 `WEBAPP_BUCKET`, `WEBAPP_DISTRIBUTION_ID`, `FRONTEND_DEPLOY_ROLE_ARN`에 넣으면 main에 프론트 변경이 합쳐질 때 자동으로 배포된다.
+- 실제 주소는 저장소가 Public이고 로그인이 없어 여기에 적지 않는다. 팀 Discord로 공유한다.
+- SageMaker 엔드포인트 `sign-word-model`은 CDK 밖에서 만들었다(ML 담당).
+
+## 측정한 것 (2026-11-08, 서울 리전)
+
+| 항목 | 결과 |
+|---|---|
+| 단어 인식 | 이후 호출 약 0.2초, 첫 호출 약 12초 |
+| 문장 + 음성 | 이후 호출 약 2초, 첫 호출 약 11.5초 |
+| 음성 인식 | Cognito 게스트 → Transcribe로 한국어 문장 인식 확인 (합성 음성) |
+| 두 화면 전달 | 접속 상태, 환자 문장·음성, 의료진 자막, 끊김 알림 확인 |
+
+첫 호출이 느리므로 시연 직전에 한 번씩 호출해 깨워 둔다.
+
+## 한계
+
+- **새로운 사람에 대한 인식 정확도는 아직 확인하지 못했다.** 배포 모델은 평가용 수어자까지 학습에 썼다. 웹캠 앞의 새 사람으로 잰 결과는 아직 없다.
+- 단어 구간 자동 자르기의 기준값(손목 높이, 대기 시간)은 실제 웹캠으로 조정하지 않은 초기값이다.
+- 어휘는 178개다. 수어사전 단어 92개는 수어자 1명 영상으로만 학습했다.
+- 로그인이 없다. 대화 코드를 아는 사람은 그 대화에 들어올 수 있다. 호출 제한(초당 10회)과 대화 기록 24시간 만료로 위험을 줄였다.
+
+## 역할
+
+| 역할 | 범위 |
+|---|---|
+| ML | 수어 인식 모델 학습·평가, SageMaker 배포, 모델 입력 규격 |
+| 데이터 + LLM, PM | 데이터 수집·전처리, 좌표 추출, Bedrock 문장 생성, 일정 관리 |
+| 백엔드 + 인프라 | WebSocket·Lambda, Transcribe·Polly, CDK, CI/CD, 모니터링 |
+| 프론트엔드 | 웹 UI, 브라우저 MediaPipe, 자막·음성 재생 |

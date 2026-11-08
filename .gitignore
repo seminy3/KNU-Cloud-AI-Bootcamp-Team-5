@@ -21,3 +21,8 @@ backend/infra/**/*.d.ts
 
 # AI Hub 좌표로 만든 시험 요청. 로컬에만 둔다
 /test_[123].json
+
+# data/에는 스크립트와 단어 목록만 올린다 (AI Hub·수어사전 원본과 좌표는 제외)
+data/*
+!data/*.py
+!data/labels.csv
