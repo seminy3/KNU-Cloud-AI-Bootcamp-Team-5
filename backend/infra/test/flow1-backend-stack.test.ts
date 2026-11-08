@@ -27,13 +27,19 @@ describe("Flow1BackendStack", () => {
     t.hasResourceProperties("AWS::ApiGatewayV2::Route", { RouteKey: "finalize" });
   });
 
-  test("Lambda 3개가 Python 3.12로 생성된다", () => {
+  test("Lambda 5개가 Python 3.12로 생성된다", () => {
     const t = synth();
-    // recognize + finalize + doctorUtterance
+    // recognize + finalize + doctorUtterance + join + $disconnect
     const fns = t.findResources("AWS::Lambda::Function", {
       Properties: { Runtime: "python3.12" },
     });
-    expect(Object.keys(fns).length).toBe(3);
+    expect(Object.keys(fns).length).toBe(5);
+  });
+
+  test("두 화면 연결용 join, $disconnect 라우트가 있다", () => {
+    const t = synth();
+    t.hasResourceProperties("AWS::ApiGatewayV2::Route", { RouteKey: "join" });
+    t.hasResourceProperties("AWS::ApiGatewayV2::Route", { RouteKey: "$disconnect" });
   });
 
   test("doctorUtterance 라우트가 있다 (흐름 ②)", () => {

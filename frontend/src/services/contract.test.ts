@@ -15,6 +15,14 @@ for(const [name,golden] of [['real',real],['synthetic',synthetic]] as const){
     expect(new TextEncoder().encode(JSON.stringify({action:'recognize',sessionId:'a'.repeat(128),keypoints:roundSequence(result)})).length).toBeLessThan(32768);
   });
 }
+describe('peer messages',()=>{
+  it('parses presence and relay',()=>{
+    expect(parseResponse(JSON.stringify({type:'presence',roles:['doctor','patient']})).type).toBe('presence');
+    expect(parseResponse(JSON.stringify({type:'relay',role:'patient',text:'머리가 아파요.',audioUrl:null}))).toEqual({type:'relay',role:'patient',text:'머리가 아파요.',audioUrl:null,needsConfirm:false});
+    expect(()=>parseResponse(JSON.stringify({type:'relay',role:'nurse',text:'x'}))).toThrow();
+    expect(()=>parseResponse(JSON.stringify({type:'presence',roles:['nurse']}))).toThrow();
+  });
+});
 describe('input guards',()=>{
   it('rejects short and invalid timelines',()=>{expect(()=>resample([])).toThrow();const points=Array.from({length:49},()=>[1,1] as [number,number]);expect(()=>resample(Array.from({length:5},()=>({time:1,points})))).toThrow();expect(()=>resample([0,1,2,1,3].map(time=>({time,points})))).toThrow();});
   it('assigns two hands by wrist distance',()=>{const pose=Array.from({length:33},()=>({x:0,y:0}));pose[15]={x:.8,y:.5};pose[16]={x:.2,y:.5};const a=[{x:.2,y:.5}],b=[{x:.8,y:.5}];expect(assignHands(pose,[a,b],1280,720)).toEqual({left:b,right:a});});

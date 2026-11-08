@@ -9,7 +9,10 @@ export function parseResponse(raw:string):Response {
   if(x?.type==='word' && typeof x.word==='string' && strings(x.words) && x.count===x.words.length && Array.isArray(x.candidates) && x.candidates.every((c:any)=>typeof c.name==='string'&&Number.isFinite(c.prob))) return x;
   if(x?.type==='speech' && strings(x.words) && typeof x.sentence==='string' && (x.audioUrl===null||typeof x.audioUrl==='string') && typeof x.needsConfirm==='boolean') return x;
   if(x?.type==='transcript' && typeof x.text==='string') return x;
-  if(x?.type==='error' && ['recognize','sentence','speech','transcript'].includes(x.stage) && typeof x.message==='string' && typeof x.retryable==='boolean') return x;
+  const role=(v:unknown)=>v==='patient'||v==='doctor';
+  if(x?.type==='presence' && Array.isArray(x.roles) && x.roles.every(role)) return x;
+  if(x?.type==='relay' && role(x.role) && typeof x.text==='string' && (x.audioUrl==null||typeof x.audioUrl==='string')) return {...x,needsConfirm:x.needsConfirm===true};
+  if(x?.type==='error' && ['recognize','sentence','speech','transcript','join'].includes(x.stage) && typeof x.message==='string' && typeof x.retryable==='boolean') return x;
   throw new Error('서버 응답 형식을 확인할 수 없습니다.');
 }
 export class Connection {

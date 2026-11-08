@@ -102,8 +102,8 @@ class ConversationStore:
         except ClientError:
             return []
         items = resp.get("Items", [])
-        # 진행 중 단어 버퍼(role=buffer)는 대화 기록이 아니므로 제외
-        items = [it for it in items if it.get("role") != BUFFER_ROLE]
+        # 진행 중 단어 버퍼(role=buffer)와 연결 목록(role=conn)은 대화 기록이 아니므로 제외
+        items = [it for it in items if it.get("role") in SPEAKER]
         items = sorted(items, key=lambda it: it.get("ts", 0))  # 오래된 → 최신
         return [
             {"speaker": SPEAKER.get(it.get("role"), it.get("role")),

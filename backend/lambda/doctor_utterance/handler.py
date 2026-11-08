@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "common"))
 sys.path.insert(0, os.path.dirname(__file__))
 
 from conversation import ConversationError, ConversationStore  # noqa: E402
+from peers import relay  # noqa: E402
 from ws import connection_id, make_poster, parse_body, send  # noqa: E402
 
 log = logging.getLogger()
@@ -68,4 +69,8 @@ def lambda_handler(event, context=None):
         send(poster, cid, payload)
     except Exception:  # noqa: BLE001
         log.exception("연결로 응답 전송 실패 cid=%s", cid)
+    # 같은 대화 코드의 환자 화면으로 의료진 자막을 전달한다
+    if payload.get("type") == "transcript":
+        relay(event, lambda: store().table, body.get("sessionId"),
+              {"type": "relay", "role": "doctor", "text": payload["text"]}, exclude=cid)
     return {"statusCode": 200}
