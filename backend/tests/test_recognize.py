@@ -25,6 +25,9 @@ def _load_recognize():
 
 
 recognize_handler = _load_recognize()
+
+# 올바른 (30, 49, 2) 입력. 검증을 통과해야 엔드포인트까지 간다
+VALID_KP = [[[0.1, 0.2]] * 49 for _ in range(30)]
 from sagemaker_client import RecognizeError, SageMakerClient  # noqa: E402
 
 
@@ -32,8 +35,10 @@ class FakeRuntime:
     def __init__(self, response=None, exc=None):
         self._response = response
         self._exc = exc
+        self.calls = []
 
     def invoke_endpoint(self, **kwargs):
+        self.calls.append(kwargs)
         if self._exc:
             raise self._exc
         return {"Body": io.BytesIO(json.dumps(self._response).encode("utf-8"))}
@@ -96,7 +101,7 @@ def test_정상_word_응답(monkeypatch):
     monkeypatch.setattr(recognize_handler, "make_poster", lambda e: poster)
 
     out = recognize_handler.lambda_handler(_event(
-        {"action": "recognize", "sessionId": "abc", "keypoints": [[[0.0, 0.0]]]}))
+        {"action": "recognize", "sessionId": "abc", "keypoints": VALID_KP}))
 
     assert out["statusCode"] == 200
     cid, payload = poster.sent[0]
@@ -112,11 +117,11 @@ def test_정상_word_응답(monkeypatch):
 def test_서버_누적_여러단어():
     recognize_handler._store = FakeStore()
     _inject(_resp(("나", 0.5)))
-    out1 = recognize_handler._handle({"sessionId": "abc", "keypoints": [[[0.0, 0.0]]]})
+    out1 = recognize_handler._handle({"sessionId": "abc", "keypoints": VALID_KP})
     assert out1["words"] == ["나"] and out1["count"] == 1
 
     _inject(_resp(("병원", 0.6)))
-    out2 = recognize_handler._handle({"sessionId": "abc", "keypoints": [[[0.0, 0.0]]]})
+    out2 = recognize_handler._handle({"sessionId": "abc", "keypoints": VALID_KP})
     assert out2["words"] == ["나", "병원"] and out2["count"] == 2
 
 
@@ -124,7 +129,7 @@ def test_버퍼_저장실패해도_단어는_반환():
     from conversation import ConversationError
     recognize_handler._store = FakeStore(exc=ConversationError("ddb down"))
     _inject(_resp(("병원", 0.62)))
-    out = recognize_handler._handle({"sessionId": "abc", "keypoints": [[[0.0, 0.0]]]})
+    out = recognize_handler._handle({"sessionId": "abc", "keypoints": VALID_KP})
     # 버퍼 저장이 실패해도 방금 인식한 단어는 돌려준다(best-effort)
     assert out["type"] == "word"
     assert out["word"] == "병원"
@@ -133,7 +138,7 @@ def test_버퍼_저장실패해도_단어는_반환():
 
 def test_sessionId_없으면_누적없이_단어만():
     _inject(_resp(("병원", 0.62)))
-    out = recognize_handler._handle({"keypoints": [[[0.0, 0.0]]]})
+    out = recognize_handler._handle({"keypoints": VALID_KP})
     assert out["type"] == "word"
     assert out["words"] == ["병원"]  # 세션 없으면 방금 단어만
 
@@ -149,14 +154,14 @@ def test_RecognizeError면_error_payload():
     err = ClientError({"Error": {"Code": "AccessDeniedException", "Message": "no"}},
                       "InvokeEndpoint")
     _inject(exc=err)
-    out = recognize_handler._handle({"keypoints": [[[0.0, 0.0]]]})
+    out = recognize_handler._handle({"keypoints": VALID_KP})
     assert out["type"] == "error"
     assert out["retryable"] is True
 
 
 def test_인식단어_없으면_error():
     _inject(_resp())  # top_k 비어 있음 → word None
-    out = recognize_handler._handle({"keypoints": [[[0.0, 0.0]]]})
+    out = recognize_handler._handle({"keypoints": VALID_KP})
     assert out["type"] == "error"
 
 
@@ -167,5 +172,29 @@ def test_push_실패해도_200(monkeypatch):
         raise RuntimeError("gone")
 
     monkeypatch.setattr(recognize_handler, "make_poster", boom)
-    out = recognize_handler.lambda_handler(_event({"keypoints": [[[0.0, 0.0]]]}))
+    out = recognize_handler.lambda_handler(_event({"keypoints": VALID_KP}))
     assert out["statusCode"] == 200  # push 실패해도 Lambda는 정상 종료
+
+
+@pytest.mark.parametrize("kp,why", [
+    ([[[0.0, 0.0]] * 49] * 3, "프레임 수"),
+    ([[[0.1, 0.2]] * 48] * 30, "지점 수"),
+    ([[[0.1, float("nan")]] * 49] * 30, "NaN"),
+    ([[[0.1, "x"]] * 49] * 30, "문자"),
+    ([[[0.1, 1e6]] * 49] * 30, "너무 큰 값"),
+    ([[[0.0, 0.0]] * 49] * 30, "모두 0"),
+])
+def test_잘못된_좌표는_엔드포인트로_보내지_않는다(kp, why):
+    rt = FakeRuntime(_resp(("병원", 0.6)))
+    recognize_handler._recognizer = SageMakerClient(endpoint_name="sign-word-model", client=rt)
+    out = recognize_handler._handle({"sessionId": "abc", "keypoints": kp})
+    assert out["type"] == "error" and out["stage"] == "recognize", why
+    assert rt.calls == [], why
+
+
+def test_호출_시간초과도_error_payload():
+    from botocore.exceptions import ReadTimeoutError
+    _inject(exc=ReadTimeoutError(endpoint_url="https://runtime.sagemaker"))
+    out = recognize_handler._handle({"keypoints": VALID_KP})
+    assert out["type"] == "error"
+    assert out["retryable"] is True

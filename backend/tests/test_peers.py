@@ -174,3 +174,10 @@ def test_disconnect는_남은_연결에_접속_상태를_알린다(monkeypatch):
     monkeypatch.setattr(mod, "make_poster", lambda event: poster)
     mod.lambda_handler(_event("A"))
     assert poster.sent == [("B", {"type": "presence", "roles": ["doctor"]})]
+
+
+def test_대화_기록은_24시간_뒤_만료된다():
+    table = FakeTable()
+    item = ConversationStore(table=table).put_turn("session-1", role="doctor", sentence="어디가 아프세요?")
+    left = item["ttl"] - time.time()
+    assert 23.9 * 3600 < left <= 24 * 3600

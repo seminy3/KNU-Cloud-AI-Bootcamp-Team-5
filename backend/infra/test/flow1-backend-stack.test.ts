@@ -36,6 +36,13 @@ describe("Flow1BackendStack", () => {
     expect(Object.keys(fns).length).toBe(5);
   });
 
+  test("WebSocket 스테이지에 호출 제한이 있다", () => {
+    const t = synth();
+    t.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
+      DefaultRouteSettings: { ThrottlingRateLimit: 10, ThrottlingBurstLimit: 20 },
+    });
+  });
+
   test("두 화면 연결용 join, $disconnect 라우트가 있다", () => {
     const t = synth();
     t.hasResourceProperties("AWS::ApiGatewayV2::Route", { RouteKey: "join" });

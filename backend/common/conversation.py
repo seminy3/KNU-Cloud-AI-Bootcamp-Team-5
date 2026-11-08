@@ -29,6 +29,14 @@ SPEAKER = {"patient": "환자", "doctor": "의사"}
 BUFFER_TS = 0
 BUFFER_ROLE = "buffer"
 
+# 진료 대화를 영구 보관하지 않도록 DynamoDB TTL(속성 "ttl", epoch 초)을 건다.
+# 테이블의 TTL 설정은 CDK(timeToLiveAttribute)에 이미 있다.
+TTL_HOURS = float(os.environ.get("CONVERSATION_TTL_HOURS", "24"))
+
+
+def _expires_at():
+    return int(time.time() + TTL_HOURS * 3600)
+
 
 class ConversationError(Exception):
     """대화 기록 저장/조회 실패."""
@@ -73,6 +81,7 @@ class ConversationStore:
             "role": role,
             "sentence": sentence,
             "needsConfirm": bool(needs_confirm),
+            "ttl": _expires_at(),
         }
         if words:
             item["words"] = list(words)
@@ -126,12 +135,13 @@ class ConversationStore:
             resp = self.table.update_item(
                 Key={"sessionId": session_id, "ts": BUFFER_TS},
                 UpdateExpression=(
-                    "SET #r = :role, "
+                    "SET #r = :role, #t = :ttl, "
                     "words = list_append(if_not_exists(words, :empty), :w)"
                 ),
-                ExpressionAttributeNames={"#r": "role"},
+                ExpressionAttributeNames={"#r": "role", "#t": "ttl"},
                 ExpressionAttributeValues={
                     ":role": BUFFER_ROLE,
+                    ":ttl": _expires_at(),
                     ":empty": [],
                     ":w": [word],
                 },
