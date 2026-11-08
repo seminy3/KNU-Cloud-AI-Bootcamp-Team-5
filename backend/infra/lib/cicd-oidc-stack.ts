@@ -1,6 +1,8 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as s3 from "aws-cdk-lib/aws-s3";
+import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 
 /**
  * CI/CD용 GitHub OIDC 연동 스택.
@@ -17,8 +19,11 @@ import * as iam from "aws-cdk-lib/aws-iam";
 export interface CicdOidcStackProps extends cdk.StackProps {
   /** owner/repo 형식 (기본 seminy3/KNU-Cloud-AI-Bootcamp-Team-5) */
   readonly githubRepo?: string;
-  /** 신뢰할 브랜치/ref 조건의 subject. 기본은 모든 ref (repo:owner/repo:*) */
+  /** 신뢰할 subject. 기본은 production 환경의 job만 (repo:owner/repo:environment:production) */
   readonly subjectClaim?: string;
+  /** 주면 main 브랜치 push에서만 쓸 수 있는 프론트 배포 역할(업로드·캐시 무효화만)을 만든다 */
+  readonly webappBucket?: s3.IBucket;
+  readonly webappDistribution?: cloudfront.IDistribution;
 }
 
 export class CicdOidcStack extends cdk.Stack {
@@ -29,7 +34,9 @@ export class CicdOidcStack extends cdk.Stack {
       props?.githubRepo ??
       (this.node.tryGetContext("githubRepo") as string) ??
       "seminy3/KNU-Cloud-AI-Bootcamp-Team-5";
-    const subject = props?.subjectClaim ?? `repo:${githubRepo}:*`;
+    // 모든 브랜치(repo:...:*)를 허용하면 아무 브랜치의 워크플로가 배포 권한을 얻으므로,
+    // ci.yml deploy job이 쓰는 environment: production 으로 좁힌다
+    const subject = props?.subjectClaim ?? `repo:${githubRepo}:environment:production`;
 
     // GitHub Actions OIDC Provider.
     const provider = new iam.OpenIdConnectProvider(this, "GitHubOidcProvider", {
@@ -82,6 +89,36 @@ export class CicdOidcStack extends cdk.Stack {
       description:
         "GitHub 저장소 시크릿 AWS_DEPLOY_ROLE_ARN 에 넣을 배포 역할 ARN",
     });
+    if (props?.webappBucket && props?.webappDistribution) {
+      // 프론트 자동 배포(frontend-build.yml): main 브랜치 push에서만, 웹앱 버킷과 캐시 무효화만 허용
+      const frontendRole = new iam.Role(this, "GitHubFrontendDeployRole", {
+        roleName: "signmed-github-frontend-deploy",
+        assumedBy: new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, {
+          StringEquals: {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+            "token.actions.githubusercontent.com:sub": `repo:${githubRepo}:ref:refs/heads/main`,
+          },
+        }),
+        description: "GitHub Actions OIDC frontend deploy (S3 sync + CloudFront invalidation)",
+        maxSessionDuration: cdk.Duration.hours(1),
+      });
+      props.webappBucket.grantReadWrite(frontendRole);
+      props.webappBucket.grantDelete(frontendRole);
+      frontendRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "InvalidateWebapp",
+          actions: ["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"],
+          resources: [
+            `arn:aws:cloudfront::${this.account}:distribution/${props.webappDistribution.distributionId}`,
+          ],
+        })
+      );
+      new cdk.CfnOutput(this, "FrontendDeployRoleArn", {
+        value: frontendRole.roleArn,
+        description: "GitHub 저장소 변수 FRONTEND_DEPLOY_ROLE_ARN 에 넣을 역할 ARN",
+      });
+    }
+
     new cdk.CfnOutput(this, "OidcProviderArn", {
       value: provider.openIdConnectProviderArn,
     });
