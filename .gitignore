@@ -18,3 +18,6 @@ backend/infra/test/*.js
 backend/infra/**/*.d.ts
 # 단, jest 설정은 소스이므로 추적
 !backend/infra/test/jest.setup.js
+
+# AI Hub 좌표로 만든 시험 요청. 로컬에만 둔다
+/test_[123].json
