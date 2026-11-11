@@ -15,7 +15,7 @@
 | `train_seq.py`, `train_svm.py`, `metrics.py`, `perturb.py` | 학습 스크립트가 불러 쓰는 모듈 |
 | `build_final.py` | 학습용 CSV 데이터셋 만들기(가로세로비 보정 포함) |
 | `deploy/eval_*.py` | 팀 데이터·웹캠 녹화·확률 임계값 평가 |
-| `deploy/upload_data.py`, `deploy/aws_preflight.ps1`, `deploy/make_dummy_model.py` | 데이터 S3 업로드, AWS 준비 점검, 배포 시험용 더미 모델 |
+| `deploy/upload_data.py`, `deploy/make_dummy_model.py` | 데이터 S3 업로드, 배포 시험용 더미 모델 |
 
 ## 최종 모델
 
