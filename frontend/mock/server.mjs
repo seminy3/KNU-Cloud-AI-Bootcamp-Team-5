@@ -18,6 +18,8 @@ server.on('connection',socket=>{socket.on('close',()=>{for(const [id,room] of ro
     if(request.action==='join'){
       if(!['patient','doctor'].includes(request.role))return fail('역할을 확인해 주세요.','join');
       if(!rooms.has(id))rooms.set(id,new Map());rooms.get(id).set(socket,request.role);presence(id);
+    }else if(request.action==='recognize'&&request.warmup===true){
+      socket.send(JSON.stringify({type:'warm',ok:true}));
     }else if(request.action==='recognize'){
       const kp=request.keypoints;
       if(!Array.isArray(kp)||kp.length!==30||!kp.every(f=>Array.isArray(f)&&f.length===49&&f.every(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite))))return fail('좌표 형식을 확인해 주세요.');
