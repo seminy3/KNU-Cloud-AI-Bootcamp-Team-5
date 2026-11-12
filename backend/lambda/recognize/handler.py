@@ -77,8 +77,25 @@ def store():
     return _store
 
 
+# 깨우기용 입력. 서버리스 엔드포인트는 쉬면 잠들어 첫 호출이 12초 넘게 걸리므로,
+# 환자 화면이 연결되면 이 입력으로 미리 한 번 호출해 둔다.
+WARMUP_KP = [[[0.1, 0.2]] * POINTS for _ in range(FRAMES)]
+
+
+def _warmup():
+    """엔드포인트를 깨운다. 단어 버퍼와 인식 로그에는 남기지 않는다."""
+    try:
+        recognizer().recognize(WARMUP_KP, top_k=1)
+        return {"type": "warm", "ok": True}
+    except RecognizeError as e:
+        log.warning("깨우기 실패: %s", e)
+        return {"type": "warm", "ok": False}
+
+
 def _handle(body):
     """비즈니스 로직만 분리(테스트 쉽게). 보낼 payload(dict)를 돌려준다."""
+    if body.get("warmup") is True:
+        return _warmup()
     keypoints = body.get("keypoints")
     if not keypoints:
         return {"type": "error", "stage": "recognize",

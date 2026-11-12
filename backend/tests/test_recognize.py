@@ -198,3 +198,20 @@ def test_호출_시간초과도_error_payload():
     out = recognize_handler._handle({"keypoints": VALID_KP})
     assert out["type"] == "error"
     assert out["retryable"] is True
+
+
+def test_깨우기는_엔드포인트만_호출하고_버퍼에_쌓지_않는다():
+    store = FakeStore()
+    recognize_handler._store = store
+    rt = FakeRuntime(_resp(("병원", 0.6)))
+    recognize_handler._recognizer = SageMakerClient(endpoint_name="sign-word-model", client=rt)
+    out = recognize_handler._handle({"sessionId": "abc", "warmup": True})
+    assert out == {"type": "warm", "ok": True}
+    assert len(rt.calls) == 1
+    assert store._buf == {}  # 단어 버퍼에 쌓지 않는다
+
+
+def test_깨우기_실패해도_오류를_내지_않는다():
+    from botocore.exceptions import ReadTimeoutError
+    _inject(exc=ReadTimeoutError(endpoint_url="https://runtime.sagemaker"))
+    assert recognize_handler._handle({"warmup": True}) == {"type": "warm", "ok": False}

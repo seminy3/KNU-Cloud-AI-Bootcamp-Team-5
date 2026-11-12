@@ -5,6 +5,7 @@ await new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('er
 const sessionId=crypto.randomUUID();
 async function request(data){const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Timeout')),3000);socket.once('message',raw=>{clearTimeout(timer);resolve(JSON.parse(raw.toString()));});});socket.send(JSON.stringify({...data,sessionId}));return response;}
 try{
+  assert.equal((await request({action:'recognize',warmup:true})).type,'warm');
   const keypoints=Array.from({length:30},()=>Array.from({length:49},()=>[.1,.2]));
   assert.deepEqual((await request({action:'recognize',keypoints})).words,['나']);
   assert.deepEqual((await request({action:'recognize',keypoints})).words,['나','병원']);

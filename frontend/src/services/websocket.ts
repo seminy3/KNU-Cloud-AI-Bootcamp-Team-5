@@ -10,6 +10,7 @@ export function parseResponse(raw:string):Response {
   if(x?.type==='speech' && strings(x.words) && typeof x.sentence==='string' && (x.audioUrl===null||typeof x.audioUrl==='string') && typeof x.needsConfirm==='boolean') return x;
   if(x?.type==='transcript' && typeof x.text==='string') return x;
   const role=(v:unknown)=>v==='patient'||v==='doctor';
+  if(x?.type==='warm' && typeof x.ok==='boolean') return x;
   if(x?.type==='presence' && Array.isArray(x.roles) && x.roles.every(role)) return x;
   if(x?.type==='relay' && role(x.role) && typeof x.text==='string' && (x.audioUrl==null||typeof x.audioUrl==='string')) return {...x,needsConfirm:x.needsConfirm===true};
   if(x?.type==='error' && ['recognize','sentence','speech','transcript','join'].includes(x.stage) && typeof x.message==='string' && typeof x.retryable==='boolean') return x;
@@ -33,8 +34,8 @@ export class Connection {
   }
   send(request:Request){
     if(this.socket?.readyState!==WebSocket.OPEN)throw new Error('서버에 연결된 뒤 다시 시도해 주세요.');
-    if(request.action==='recognize'&&!validateSequence(request.keypoints))throw new Error('좌표 데이터가 올바르지 않습니다.');
-    const payload=JSON.stringify(request.action === 'recognize' ? {...request,keypoints:roundSequence(request.keypoints)} : request);
+    if(request.action==='recognize'&&'keypoints' in request&&!validateSequence(request.keypoints))throw new Error('좌표 데이터가 올바르지 않습니다.');
+    const payload=JSON.stringify(request.action === 'recognize' && 'keypoints' in request ? {...request,keypoints:roundSequence(request.keypoints)} : request);
     if(new TextEncoder().encode(payload).length>32768)throw new Error('좌표 요청이 32KB를 초과합니다. 백엔드와 전송 규격 협의가 필요합니다.');
     this.socket.send(payload);
   }

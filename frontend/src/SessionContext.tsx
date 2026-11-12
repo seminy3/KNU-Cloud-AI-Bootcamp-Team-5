@@ -28,6 +28,7 @@ function useSessionState(){
       if(s==='reconnecting'&&pendingRef.current){setUncertain(true);setError('요청 처리 여부를 확인할 수 없습니다. 중복 전송을 막기 위해 새 대화를 시작해 주세요.');}
     },r=>{
       // 상대 화면 관련 메시지는 내 요청의 응답이 아니므로 response를 바꾸지 않는다
+      if(r.type==='warm')return; // 모델 깨우기 응답은 화면에 쓰지 않는다
       if(r.type==='presence'){setPeers(r.roles);return;}
       if(r.type==='relay'){add({id:crypto.randomUUID(),role:r.role,text:r.text,time:Date.now(),needsConfirm:r.needsConfirm,audioUrl:r.audioUrl});return;}
       setResponse(r);
@@ -49,6 +50,11 @@ function useSessionState(){
   useEffect(()=>{
     if(status!=='connected'||!sessionId||!role)return;
     try{connection.current?.send({action:'join',sessionId,role});}catch(e){setError((e as Error).message);}
+    if(role!=='patient')return;
+    // 서버리스 모델은 쉬면 잠들어 첫 인식이 12초 넘게 걸린다. 환자 화면이 연결되면 미리 깨우고, 열어 둔 동안 4분마다 다시 깨운다
+    const warm=()=>{try{connection.current?.send({action:'recognize',sessionId,warmup:true});}catch{}};
+    warm();const timer=setInterval(warm,240000);
+    return ()=>clearInterval(timer);
   },[status,sessionId,role]);
   function begin(id:string=crypto.randomUUID()){setItems([]);setMessages([]);setResponse(null);setError('');setUncertain(false);setPending('');pendingRef.current='';setSessionId(id);}
   function end(){setSessionId('');sessionStorage.removeItem('signmed-session');setItems([]);setMessages([]);setResponse(null);}
